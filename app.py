@@ -129,64 +129,113 @@ with tab1:
         st.plotly_chart(fig, width='stretch')
 
 with tab2:
-    st.subheader("Procesamiento de Lenguaje Natural")
-    st.info("Se utiliza la Seed 14 para extraer una muestra de 15 canciones, garantizando la consistencia con el análisis del Notebook.")
+    st.subheader("Explorador Interactivo de Letras (NLP)")
+    st.markdown("""
+        1. Obtenemos una muestra representativa de 15 canciones (Seed 14).
+        2. Puedes combinar y filtrar en tiempo real las letras extraídas para ver cómo cambia el vocabulario.
+    """)
     
-    if st.button("Ejecutar análisis léxico"):
-        # Usamos la semilla validada en el Colab
-        sample = df_mac.sample(n=15, random_state=14)['clean_name'].tolist()
-        all_text = ""
-        
-        progress = st.progress(0)
-        status = st.empty()
-        
-        for i, song in enumerate(sample):
-            status.text(f"Solicitando API: {song}...")
-            try:
-                # Consultamos la API lyrics.ovh
-                r = requests.get(f"https://api.lyrics.ovh/v1/Fleetwood Mac/{song}", timeout=5)
-                if r.status_code == 200:
-                    all_text += " " + r.json().get('lyrics', '')
-            except:
-                pass
-            progress.progress((i + 1) / 15)
-            time.sleep(0.5) # Delay preventivo para la API pública
-            
-        status.success("Análisis completado.")
-        
-        # Tokenización y limpieza con NLTK
-        words = re.findall(r'\b[a-z]{3,}\b', all_text.lower())
-        stop_words_nltk = set(stopwords.words('english'))
-        
-        # Dejamos en custom_stops solo palabras reales
-        custom_stops = {'chorus', 'verse', 'like', 'know', 'get', 'got', 'way', 'see', 'well'}
-        
-        # Filtramos uniendo stop words y aplicando Regex para palabras que se pueden alargar hasta el infinito (ooh, yeah, aah...)
-        filtered_words = [
-            w for w in words
-            if w not in stop_words_nltk.union(custom_stops)
-            and not re.match(r'^o+h+$', w)      # ooh, oooh, oooooh...
-            and not re.match(r'^a+h+$', w)      # aah, aaah, aaaaah...
-            and not re.match(r'^y+e+a+h+$', w)  # yeah, yeaaaah...
+    # Tokenización y limpieza con NLTK y regex
+    def clean_lyrics(text):
+        # Cogemos solo palabras de al menos 3 letras y convertimos a minúsculas
+        tokens = re.findall(r'\b[a-z]{3,}\b', text.lower())
+        # Usamos las stopwords de NLTK en inglés
+        stop_words = set(stopwords.words('english'))
+        # Añadimos algunas palabras extra que suelen salir en letras de canciones y no aportan mucho
+        custom_stops = {
+            'chorus', 'verse', 'like', 'know', 'get', 'got', 'way', 'see', 'well', 
+            'back', 'take', 'make', 'could', 'would', 'time', 'come', 'tell', 'one'
+        }
+        # Filtramos uniendo stop words
+        # y aplicando Regex para palabras que se pueden alargar hasta el infinito (ooh, yeah, aah...)
+        # (esas no se pueden definir en la lista de antes porque el número de vocales es indeterminado)
+        filtered = [
+            t for t in tokens 
+            if t not in stop_words.union(custom_stops)
+            and not re.match(r'^o+h+$', t) # ooh, oooh, oooooh...
+            and not re.match(r'^a+h+$', t) # aah, aaah, aaaaah...
+            and not re.match(r'^y+e+a+h+$', t) # yeah, yeaaaah...
         ]
+        return filtered
+
+    # Inicializamos la "memoria" de Streamlit si no existe (session storage del navegador)
+    # NOTA: Nos estamos guardando las letras que encontramos en el navegador
+    # para que cuando haces filtrado, como streamlit volvería a llamar a este código,
+    # no queremos que cada vez que filtres tenga que llamar a la API otra vez (mala UX y no queremos spamear la API),
+    # así que al guardarla en session_state, se queda en el navegador del usuario durante esa sesión
+    # y reutiliza la lista en llamadas posteriores para que el filtrado sea rápido y directo.
+    if 'lyrics_dict' not in st.session_state:
+        st.session_state.lyrics_dict = {}
+
+    # Botón de extracción (solo hace falta pulsarlo una vez)
+    if st.button("📥 Descargar y procesar letras") or st.session_state.lyrics_dict:
         
-        counts = Counter(filtered_words).most_common(15)
-        
-        if counts:
-            words_df = pd.DataFrame(counts, columns=['Palabra', 'Frecuencia'])
+        # Si el diccionario está vacío, llamamos a la API
+        if not st.session_state.lyrics_dict:
+            sample = df_mac.sample(n=15, random_state=14)['clean_name'].tolist()
+            progress = st.progress(0)
+            status = st.empty()
             
-            # Gráfico de barras interactivo
-            fig_bar = px.bar(
-                words_df, 
-                x='Frecuencia', 
-                y='Palabra', 
-                orientation='h',
-                color='Frecuencia',
-                color_continuous_scale='viridis',
-                title="Palabras más frecuentes en la muestra (Stop-words filtradas)"
+            for i, song in enumerate(sample):
+                status.text(f"Extrayendo ({i+1}/15): {song}...")
+                try:
+                    r = requests.get(f"https://api.lyrics.ovh/v1/Fleetwood Mac/{song}", timeout=5)
+                    if r.status_code == 200:
+                        letra = r.json().get('lyrics', '')
+                        if letra:
+                            # Limpiamos la letra al momento y la guardamos en el diccionario
+                            st.session_state.lyrics_dict[song] = clean_lyrics(letra)
+                except:
+                    pass
+                progress.progress((i + 1) / 15)
+                time.sleep(0.5) 
+                
+            status.empty()
+            progress.empty()
+            
+            if st.session_state.lyrics_dict:
+                st.success(f"¡{len(st.session_state.lyrics_dict)} letras descargadas y cacheadas con éxito!")
+            else:
+                st.error("Falló la conexión con la API.")
+
+        # Si el diccionario se descargó bien (o ya lo teníamos), mostramos la gráfica con opciones de filtrado
+        if st.session_state.lyrics_dict:
+            canciones_disponibles = list(st.session_state.lyrics_dict.keys())
+            
+            seleccionadas = st.multiselect(
+                "Selecciona qué canciones combinar en el análisis:",
+                options=canciones_disponibles,
+                default=canciones_disponibles # Por defecto mostramos todas las encontradas
             )
             
-            # Ordenamos para que la más frecuente quede arriba del todo
-            fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
-            
-            st.plotly_chart(fig_bar, width='stretch')
+            if seleccionadas:
+                # Concatenamos las listas de palabras de las canciones seleccionadas
+                palabras_combinadas = []
+                for c in seleccionadas:
+                    palabras_combinadas.extend(st.session_state.lyrics_dict[c])
+                
+                counts = Counter(palabras_combinadas).most_common(15)
+                
+                if counts:
+                    words_df = pd.DataFrame(counts, columns=['Palabra', 'Frecuencia'])
+                    
+                    fig_bar = px.bar(
+                        words_df, 
+                        x='Frecuencia', 
+                        y='Palabra', 
+                        orientation='h',
+                        color='Frecuencia',
+                        color_continuous_scale='viridis',
+                        title="Frecuencia de palabras en la selección actual"
+                    )
+                    
+                    fig_bar.update_layout(
+                        yaxis={'categoryorder':'total ascending'},
+                        margin=dict(l=20, r=20, t=40, b=20)
+                    )
+                    
+                    st.plotly_chart(fig_bar, width='stretch')
+                else:
+                    st.warning("No hay suficientes palabras significativas en esta selección.")
+            else:
+                st.info("Selecciona al menos una canción arriba para ver el gráfico.")
