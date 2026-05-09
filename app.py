@@ -146,11 +146,20 @@ with tab2:
         status.success("Análisis completado.")
         
         # Tokenización y limpieza con NLTK
-        tokens = re.findall(r'\b[a-z]{3,}\b', all_text.lower())
+        words = re.findall(r'\b[a-z]{3,}\b', all_text.lower())
         stop_words = set(stopwords.words('english'))
-        # Añadimos muletillas comunes en letras de canciones
-        custom_stops = {'yeah', 'ooh', 'chorus', 'verse', 'like', 'know', 'get', 'got', 'way', 'oh', 'ah', 'hey', 'see', 'well'}
-        filtered = [t for t in tokens if t not in stop_words.union(custom_stops)]
+        
+        # Dejamos en custom_stops solo palabras reales
+        custom_stops = {'chorus', 'verse', 'like', 'know', 'get', 'got', 'way', 'see', 'well'}
+        
+        # Filtramos uniendo stop words y aplicando Regex para palabras que se pueden alargar hasta el infinito (ooh, yeah, aah...)
+        filtered = [
+            w for w in words
+            if w not in stop_words.union(custom_stops)
+            and not re.match(r'^o+h+$', w)      # ooh, oooh, oooooh...
+            and not re.match(r'^a+h+$', w)      # aah, aaah, aaaaah...
+            and not re.match(r'^y+e+a+h+$', w)  # yeah, yeaaaah...
+        ]
         
         counts = Counter(filtered).most_common(15)
         
