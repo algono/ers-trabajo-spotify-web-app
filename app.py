@@ -1,17 +1,15 @@
 import streamlit as st
 import pandas as pd
-import ast
 import requests
 import re
 import os
 import gdown
 import time
 from collections import Counter
-import matplotlib.pyplot as plt
-import seaborn as sns
-import numpy as np
 import nltk
 from nltk.corpus import stopwords
+import plotly.express as px
+import plotly.graph_objects as go
 
 # --- CONFIGURACIÓN DE RECURSOS ---
 
@@ -94,18 +92,32 @@ with tab1:
     selected = st.multiselect("Comparar álbumes:", album_options, default=album_options)
     
     if selected:
-        fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
-        angles = np.linspace(0, 2 * np.pi, len(features), endpoint=False).tolist() + [0]
+        fig = go.Figure()
+        
+        # Plotly necesita que el último valor sea igual al primero para "cerrar" el polígono
+        categories_closed = features + [features[0]]
         
         for album in selected:
-            values = album_norm.loc[album].tolist() + [album_norm.loc[album].iloc[0]]
-            ax.plot(angles, values, linewidth=2, label=album)
-            ax.fill(angles, values, alpha=0.1)
+            # Extraemos los valores y repetimos el primero al final
+            values = album_norm.loc[album].tolist()
+            values_closed = values + [values[0]]
             
-        ax.set_xticks(angles[:-1])
-        ax.set_xticklabels(features)
-        ax.legend(loc='upper right', bbox_to_anchor=(1.3, 1.1))
-        st.pyplot(fig)
+            fig.add_trace(go.Scatterpolar(
+                r=values_closed,
+                theta=categories_closed,
+                fill='toself',
+                name=album,
+                hoverinfo='text',
+                text=[f"{val:.2f}" for val in values_closed]
+            ))
+
+        fig.update_layout(
+            polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
+            showlegend=True,
+            margin=dict(l=40, r=40, t=40, b=40)
+        )
+        # Renderizamos el gráfico interactivo en Streamlit
+        st.plotly_chart(fig, use_container_width=True)
 
 with tab2:
     st.subheader("Procesamiento de Lenguaje Natural")
@@ -144,6 +156,19 @@ with tab2:
         
         if counts:
             words_df = pd.DataFrame(counts, columns=['Palabra', 'Frecuencia'])
-            fig_bar, ax_bar = plt.subplots(figsize=(10, 5))
-            sns.barplot(data=words_df, x='Frecuencia', y='Palabra', hue='Palabra', palette='viridis', legend=False, ax=ax_bar)
-            st.pyplot(fig_bar)
+            
+            # Gráfico de barras interactivo
+            fig_bar = px.bar(
+                words_df, 
+                x='Frecuencia', 
+                y='Palabra', 
+                orientation='h',
+                color='Frecuencia',
+                color_continuous_scale='viridis',
+                title="Palabras más frecuentes en la muestra (Stop-words filtradas)"
+            )
+            
+            # Ordenamos para que la más frecuente quede arriba del todo
+            fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
+            
+            st.plotly_chart(fig_bar, use_container_width=True)
