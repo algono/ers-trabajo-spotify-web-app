@@ -33,7 +33,7 @@ def load_and_preprocess_data(data_path):
     """Carga, filtrado de artista y limpieza de títulos para la API."""
     df = pd.read_csv(data_path)
     
-    # ID de Fleetwood Mac en este dataset específico
+    # ID de Fleetwood Mac en el dataset de Spotify (comprobado en Colab)
     TARGET_ARTIST_ID = '08GQAI4eElDnROBrJRGE0X'
 
     # Filtrado por artista y álbumes de estudio oficiales
@@ -59,9 +59,18 @@ def load_and_preprocess_data(data_path):
     artist_df['short_album_name'] = artist_df['album'].str.split('(').str[0].str.strip()
     artist_df = artist_df[artist_df['short_album_name'].isin(STUDIO_ALBUMS)]
     
+    # Ordenar por año, quitar duplicados de álbum/canción y resetear el índice
+    artist_df = (
+        artist_df
+        .sort_values('year')
+        .drop_duplicates(subset=['short_album_name', 'name'], keep='first')
+        .sort_values('year')
+        .reset_index(drop=True)
+    )
+
     # Limpieza de títulos (quitar remasterizaciones y caracteres especiales para la API)
     artist_df['clean_name'] = artist_df['name'].str.split(' - ').str[0].str.split(' \(').str[0].str.strip()
-    # Filtro de seguridad: solo nombres alfanuméricos para maximizar el hit rate de la API
+    # Filtro de seguridad: solo nombres alfanuméricos
     safe_songs_df = artist_df[artist_df['clean_name'].str.match(r'^[a-zA-Z0-9\s]+$', na=False)]
     
     return safe_songs_df.drop_duplicates(subset=['clean_name'])
