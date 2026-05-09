@@ -90,7 +90,8 @@ with tab1:
     # Normalización para el gráfico de radar
     album_norm = (album_means - album_means.min()) / (album_means.max() - album_means.min() + 1e-9)
     
-    selected = st.multiselect("Comparar álbumes:", list(album_norm.index), default=['Rumours', 'Tusk'])
+    album_options = list(album_norm.index)
+    selected = st.multiselect("Comparar álbumes:", album_options, default=album_options)
     
     if selected:
         fig, ax = plt.subplots(figsize=(6, 6), subplot_kw=dict(polar=True))
