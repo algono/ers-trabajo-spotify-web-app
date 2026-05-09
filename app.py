@@ -117,7 +117,7 @@ with tab1:
             margin=dict(l=40, r=40, t=40, b=40)
         )
         # Renderizamos el gráfico interactivo en Streamlit
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
 
 with tab2:
     st.subheader("Procesamiento de Lenguaje Natural")
@@ -147,21 +147,21 @@ with tab2:
         
         # Tokenización y limpieza con NLTK
         words = re.findall(r'\b[a-z]{3,}\b', all_text.lower())
-        stop_words = set(stopwords.words('english'))
+        stop_words_nltk = set(stopwords.words('english'))
         
         # Dejamos en custom_stops solo palabras reales
         custom_stops = {'chorus', 'verse', 'like', 'know', 'get', 'got', 'way', 'see', 'well'}
         
         # Filtramos uniendo stop words y aplicando Regex para palabras que se pueden alargar hasta el infinito (ooh, yeah, aah...)
-        filtered = [
+        filtered_words = [
             w for w in words
-            if w not in stop_words.union(custom_stops)
+            if w not in stop_words_nltk.union(custom_stops)
             and not re.match(r'^o+h+$', w)      # ooh, oooh, oooooh...
             and not re.match(r'^a+h+$', w)      # aah, aaah, aaaaah...
             and not re.match(r'^y+e+a+h+$', w)  # yeah, yeaaaah...
         ]
         
-        counts = Counter(filtered).most_common(15)
+        counts = Counter(filtered_words).most_common(15)
         
         if counts:
             words_df = pd.DataFrame(counts, columns=['Palabra', 'Frecuencia'])
@@ -180,4 +180,4 @@ with tab2:
             # Ordenamos para que la más frecuente quede arriba del todo
             fig_bar.update_layout(yaxis={'categoryorder':'total ascending'})
             
-            st.plotly_chart(fig_bar, use_container_width=True)
+            st.plotly_chart(fig_bar, width='stretch')
